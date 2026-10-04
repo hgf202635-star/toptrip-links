@@ -89,6 +89,15 @@
   .is-open #hstate{color:var(--ok);font-weight:700}
   .is-closed #hstate{color:var(--bad);font-weight:700}
 
+  .notice{
+    display:none;margin-top:12px;max-width:100%;align-items:flex-start;gap:10px;
+    padding:12px 16px;border-radius:16px;font-size:.92rem;line-height:1.7;font-weight:500;
+    background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.5);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  }
+  .notice.show{display:flex}
+  .notice svg{width:20px;height:20px;color:var(--bad);flex:none;margin-top:3px}
+
   .links{width:100%;margin-top:24px;display:flex;flex-direction:column;gap:14px}
   .link{
     display:flex;align-items:center;gap:14px;
@@ -165,6 +174,11 @@
     </span>
   </div>
 
+  <div class="notice" id="notice" role="status">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.700 3.900a2 2 0 0 0-3.400 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <span id="reason"></span>
+  </div>
+
   <!-- الأزرار الرئيسية -->
   <nav class="links" id="links"></nav>
 
@@ -193,7 +207,7 @@ const COUNTER_KEY = "toptrip-linkpage/visits";
 
 const LINKS = [
   { ar:"احجز الآن",     en:"Book Now",         href:"https://top-trip.pages.dev/", icon:"globe", primary:true },
-  { ar:"موقع الانطلاق", en:"Location",         href:"https://www.google.com/maps/search/?api=1&query=Al+Manqa+AlUla+43543", icon:"pin" },
+  { ar:"موقع الانطلاق", en:"Location",         href:"https://www.google.com/maps/search/?api=1&query=Top+Trip+AlUla", icon:"pin" },
   { ar:"أعمالنا",       en:"Our works",        href:"https://drive.google.com/drive/folders/1SYB7x4udSeZMvfAkLYB-11Xo_OBm95ph", icon:"image" },
 ];
 
@@ -208,9 +222,9 @@ const SOCIAL = [
 
 const TEXT = {
   ar:{ tag:"اكتشف العلا بطريقة مختلفة", addr:"المنقى، العلا · 43543 · المملكة العربية السعودية",
-       open:"مفتوح الآن", closed:"مغلق الآن · نفتح 8:00 ص", time:"8:00 ص – 6:00 م", btn:"English", title:"TOP TRIP AlUla | روابطنا" },
+       open:"مفتوح الآن", closed:"مغلق الآن · نفتح 8:00 ص", tempClosed:"مغلق مؤقتًا", time:"8:00 ص – 6:00 م", btn:"English", title:"TOP TRIP AlUla | روابطنا" },
   en:{ tag:"Discover AlUla differently", addr:"AlManqa, AlUla · 43543 · Saudi Arabia",
-       open:"Open now", closed:"Closed now · Opens 8:00 AM", time:"8:00 AM – 6:00 PM", btn:"العربية", title:"TOP TRIP AlUla | Links" }
+       open:"Open now", closed:"Closed now · Opens 8:00 AM", tempClosed:"Temporarily closed", time:"8:00 AM – 6:00 PM", btn:"العربية", title:"TOP TRIP AlUla | Links" }
 };
 /* ================================================= */
 
@@ -241,15 +255,33 @@ function renderLinks(){
     </a>`).join("");
 }
 
+let STATUS = { mode:"auto", reason_ar:"", reason_en:"" }; // يتحدّث من /api/status
+
 function renderHours(){
   const t = TEXT[lang];
-  let h = +new Intl.DateTimeFormat("en-GB",{timeZone:TZ,hour:"numeric",hour12:false}).format(new Date()) % 24;
-  const open = h >= OPEN_H && h < CLOSE_H;
+  const h = +new Intl.DateTimeFormat("en-GB",{timeZone:TZ,hour:"numeric",hour12:false}).format(new Date()) % 24;
+  let open = h >= OPEN_H && h < CLOSE_H;
+  if (STATUS.mode === "open") open = true;
+  if (STATUS.mode === "closed") open = false;
   const box = document.getElementById("state");
   box.classList.toggle("is-open", open);
   box.classList.toggle("is-closed", !open);
-  document.getElementById("hstate").textContent = open ? t.open : t.closed;
+  document.getElementById("hstate").textContent = open ? t.open : (STATUS.mode === "closed" ? t.tempClosed : t.closed);
   document.getElementById("htime").textContent = t.time;
+
+  const reason = lang === "ar" ? (STATUS.reason_ar || STATUS.reason_en) : (STATUS.reason_en || STATUS.reason_ar);
+  const n = document.getElementById("notice");
+  document.getElementById("reason").textContent = reason || "";
+  n.classList.toggle("show", STATUS.mode === "closed" && !!reason);
+}
+
+async function loadStatus(){
+  try{
+    const r = await fetch("/api/status", { cache:"no-store" });
+    if(!r.ok) return;
+    const s = await r.json();
+    if (s && ["auto","open","closed"].includes(s.mode)) { STATUS = s; renderHours(); }
+  }catch(e){}
 }
 
 function applyLang(){
@@ -273,7 +305,9 @@ document.getElementById("social").innerHTML = SOCIAL.map(s =>
 document.getElementById("y").textContent = new Date().getFullYear();
 
 applyLang();
+loadStatus();
 setInterval(renderHours, 60000);
+setInterval(loadStatus, 60000);
 
 /* عدّاد الزيارات: يزيد مرة وحدة لكل جلسة، وإذا فشل الاتصال يظهر — */
 (async function(){
