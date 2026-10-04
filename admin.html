@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#17130f">
+<title>لوحة التحكم | TOP TRIP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#17130f;--card:rgba(255,255,255,.06);--line:rgba(217,163,91,.35);--gold:#d9a35b;--gold-2:#f0c987;--text:#f5ece0;--muted:#c9b9a4;--ok:#4ade80;--bad:#f87171}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Tajawal",system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:28px 18px;display:flex;justify-content:center}
+  body::before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(800px 420px at 50% -5%,rgba(217,163,91,.2),transparent 60%),linear-gradient(180deg,rgba(23,19,15,.6),rgba(23,19,15,.92)),url("bg.jpg") center/cover}
+  main{width:100%;max-width:480px}
+  h1{font-size:1.4rem;font-weight:800;text-align:center}
+  .sub{color:var(--muted);text-align:center;margin-top:4px;font-size:.9rem}
+  .card{margin-top:22px;padding:20px;border-radius:18px;background:var(--card);border:1px solid var(--line);backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:14px}
+  label{font-weight:700;font-size:.92rem;display:block;margin-bottom:6px}
+  input[type=password],textarea{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.35);color:var(--text);font:inherit;font-size:1rem}
+  textarea{resize:vertical;min-height:70px}
+  input:focus,textarea:focus{outline:2px solid var(--gold);outline-offset:0}
+  .modes{display:grid;gap:10px}
+  .mode{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);cursor:pointer;background:rgba(0,0,0,.25)}
+  .mode input{accent-color:var(--gold);width:18px;height:18px}
+  .mode b{display:block}
+  .mode small{color:var(--muted)}
+  .mode:has(input:checked){border-color:var(--gold);background:rgba(217,163,91,.15)}
+  button{font:inherit;font-weight:800;font-size:1.05rem;padding:14px;border-radius:14px;border:0;cursor:pointer;background:linear-gradient(135deg,var(--gold-2),#c27f3a);color:#17130f}
+  button:disabled{opacity:.6}
+  .msg{text-align:center;font-weight:700;min-height:1.4em}
+  .msg.ok{color:var(--ok)}.msg.err{color:var(--bad)}
+  .hint{color:var(--muted);font-size:.8rem}
+  a{color:var(--gold-2)}
+</style>
+</head>
+<body>
+<main>
+  <h1>لوحة التحكم</h1>
+  <p class="sub">التحكم في حالة الفتح والإغلاق في صفحة الروابط</p>
+
+  <form class="card" id="f">
+    <div>
+      <label for="pw">كلمة السر</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+    </div>
+
+    <div>
+      <label>الحالة</label>
+      <div class="modes">
+        <label class="mode"><input type="radio" name="mode" value="auto" checked>
+          <span><b>تلقائي</b><small>حسب ساعات العمل 8 ص – 6 م</small></span></label>
+        <label class="mode"><input type="radio" name="mode" value="closed">
+          <span><b>مغلق الآن</b><small>يظهر مغلق للزوار مع السبب</small></span></label>
+        <label class="mode"><input type="radio" name="mode" value="open">
+          <span><b>مفتوح الآن</b><small>يظهر مفتوح حتى خارج ساعات العمل</small></span></label>
+      </div>
+    </div>
+
+    <div>
+      <label for="ra">سبب الإغلاق (عربي)</label>
+      <textarea id="ra" maxlength="300" placeholder="مثال: الإغلاق مؤقت بسبب الأحوال الجوية"></textarea>
+    </div>
+    <div>
+      <label for="re">Reason (English)</label>
+      <textarea id="re" dir="ltr" maxlength="300" placeholder="e.g. Temporarily closed due to weather"></textarea>
+      <p class="hint">السبب يظهر فقط لما تختار "مغلق الآن".</p>
+    </div>
+
+    <button id="btn" type="submit">حفظ</button>
+    <p class="msg" id="msg"></p>
+  </form>
+  <p class="sub" style="margin-top:18px"><a href="/">← صفحة الروابط</a></p>
+</main>
+
+<script>
+const f = document.getElementById("f"), msg = document.getElementById("msg"), btn = document.getElementById("btn");
+const say = (t, c) => { msg.textContent = t; msg.className = "msg " + (c || ""); };
+
+// تحميل الحالة الحالية
+fetch("/api/status", { cache: "no-store" }).then(r => r.json()).then(s => {
+  const m = document.querySelector(`input[name=mode][value=${s.mode}]`);
+  if (m) m.checked = true;
+  document.getElementById("ra").value = s.reason_ar || "";
+  document.getElementById("re").value = s.reason_en || "";
+}).catch(() => {});
+
+f.addEventListener("submit", async e => {
+  e.preventDefault();
+  btn.disabled = true; say("جاري الحفظ…");
+  try {
+    const r = await fetch("/api/status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        password: document.getElementById("pw").value,
+        mode: f.mode.value,
+        reason_ar: document.getElementById("ra").value,
+        reason_en: document.getElementById("re").value
+      })
+    });
+    if (r.status === 401) say("كلمة السر غلط", "err");
+    else if (!r.ok) say("صار خطأ في الحفظ، تأكد من ربط KV", "err");
+    else say("تم الحفظ ✓", "ok");
+  } catch (err) { say("تعذّر الاتصال", "err"); }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>
